@@ -1,1 +1,8 @@
 makefile
+make-data/.elf
+make-data/.hex
+make-data/clock.o
+make-data/main.o
+make-data/mesh_radio.o
+make-data/nrf24L01.o
+make-data/serialF0.o

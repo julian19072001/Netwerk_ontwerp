@@ -12,7 +12,6 @@
 
 int main(void)
 {
-	PORTF.DIRSET = PIN1_bm; //Rood
 	init_clock();
     init_stream(F_CPU);
 	radio_init();

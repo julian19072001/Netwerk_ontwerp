@@ -18,9 +18,10 @@ ISR(PORTF_INT0_vect)
 	if ( rx_dr ) {
 		packet_length = nrfGetDynamicPayloadSize();	 //get the size of the received data
 		nrfRead(received_packet, packet_length);	 //store the received data
+        
         if(check_message_new(received_packet)){
-            PORTF.OUTTGL = PIN1_bm;
             new_data = 1;
+
             nrfStopListening();
             cli();
             nrfWrite( (uint8_t *) &received_packet, packet_length);
