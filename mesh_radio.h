@@ -24,6 +24,7 @@
 void radio_init(void);
 
 void send_radio_data(uint8_t data_type, uint8_t* data, uint8_t data_size);
+uint8_t get_radio_data(uint8_t* data);
 
 
 #endif // MESH_RADIO_H_

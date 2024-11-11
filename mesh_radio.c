@@ -35,6 +35,7 @@ uint8_t check_message_new(uint8_t* payload){
     static uint8_t previous_message[256] = {0};
 
     if(payload[1] == previous_message[payload[0]]) return 0;
+    if(payload[0] == DEVICE_ADDRESS) return 0;
     
     previous_message[payload[0]] = payload[1];
     return 1;
@@ -42,7 +43,7 @@ uint8_t check_message_new(uint8_t* payload){
 
 void send_radio_data(uint8_t data_type, uint8_t* data, uint8_t data_size){
     
-    if(data_size > 29) return;
+    if(data_size > 28) return;
 
     static uint8_t message_number = 0;
     
@@ -50,8 +51,9 @@ void send_radio_data(uint8_t data_type, uint8_t* data, uint8_t data_size){
     send_data[0] = DEVICE_ADDRESS;
     send_data[1] = message_number;
     send_data[2] = data_type;
+    send_data[3] = data_size;
     for(int i = 0; i < data_size; i++){
-        send_data[i+3] = data[i];
+        send_data[i+4] = data[i];
     }
 
     message_number++;
@@ -62,6 +64,16 @@ void send_radio_data(uint8_t data_type, uint8_t* data, uint8_t data_size){
     nrfWrite( (uint8_t *) &send_data, data_size + 3);
     sei();
     nrfStartListening();
+}
+
+//return new data if there is new data
+uint8_t get_radio_data(uint8_t* data){
+    if(!new_data) return 0;
+
+    for(int i = 0; i < 32; i++) data[i] = received_packet[i];
+    new_data = 0;
+    
+    return 1;
 }
 
 //setup for NRF communication
