@@ -19,7 +19,7 @@
 #define NRF_CHANNEL     24                              //NRF channel 24
 #define NRF_AUTO_ACK    0                               //turn off auto acknowlage
 
-#define DEVICE_ADDRESS  0x01                            //address of device (each address can only be used once in a network)
+#define DEVICE_ADDRESS  0x01                           //address of device (each address can only be used once in a network)
 
 void radio_init(void);
 

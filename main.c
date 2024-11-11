@@ -22,6 +22,7 @@ int main(void)
 	sei();
 
 	uint8_t received_data[32] = {0};
+	uint8_t send_data[32] = {0};
 	
 	while(1)
 	{
@@ -33,11 +34,12 @@ int main(void)
 				uartF0_putc('\n');
 			} 
             uartF0_putc(temp_Char);
-
-			send_radio_data(1, &temp_Char, 1);
+			
+			send_data[0] = temp_Char;
+			send_radio_data(1, send_data, 1);
         }
 
-		if(get_radio_data(&received_data)){
+		if(get_radio_data(received_data)){
 			uint8_t temp_Char2 = received_data[4];
 
 			if(temp_Char2 == '\r') {
