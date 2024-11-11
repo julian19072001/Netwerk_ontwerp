@@ -6,3 +6,15 @@ make-data/main.o
 make-data/mesh_radio.o
 make-data/nrf24L01.o
 make-data/serialF0.o
+make-data/.elf
+make-data/.hex
+make-data/main.o
+make-data/mesh_radio.o
+make-data/podmeter_main.o
+make-data/relay_main.o
+make-data/terminal_main.o
+make-data/mesh_radio.o
+make-data/main.o
+make-data/.hex
+make-data/.elf
+make-data/.elf

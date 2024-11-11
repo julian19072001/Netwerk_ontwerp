@@ -1,8 +1,10 @@
 #include <avr/interrupt.h>
 #include "mesh_radio.h"
+
 uint8_t pipe[5] = {0x30, 0x47, 0x72, 0x70, 0x45}; 		//pipe address ""
 uint8_t received_packet[32] = {0};				//create a place to store received data
 volatile uint8_t new_data = 0;                             //place to keep track if there is unprocessed data
+volatile uint8_t address = 0;
 
 //check if received message was already received before
 uint8_t check_message_new(uint8_t* payload);
@@ -18,7 +20,7 @@ ISR(PORTF_INT0_vect)
 	if ( rx_dr ) {
 		packet_length = nrfGetDynamicPayloadSize();	 //get the size of the received data
 		nrfRead(received_packet, packet_length);	 //store the received data
-        
+
         if(check_message_new(received_packet)){
             new_data = 1;
 
@@ -36,7 +38,7 @@ uint8_t check_message_new(uint8_t* payload){
     static uint8_t previous_message[256] = {0};
 
     if(payload[1] == previous_message[payload[0]]) return 0;
-    if(payload[0] == DEVICE_ADDRESS) return 0;
+    if(payload[0] == address) return 0;
     
     previous_message[payload[0]] = payload[1];
     return 1;
@@ -49,7 +51,7 @@ void send_radio_data(uint8_t data_type, uint8_t* data, uint8_t data_size){
     static uint8_t message_number = 0;
     
     uint8_t send_data[32] = {0};
-    send_data[0] = DEVICE_ADDRESS;
+    send_data[0] = address;
     send_data[1] = message_number;
     send_data[2] = data_type;
     send_data[3] = data_size;
@@ -78,7 +80,7 @@ uint8_t get_radio_data(uint8_t* data){
 }
 
 //setup for NRF communication
-void radio_init(void)
+void radio_init(uint8_t set_address)
 {
 	nrfspiInit();                                                               //initialize SPI
 	nrfBegin();                                                                 //initialize NRF module
@@ -103,4 +105,6 @@ void radio_init(void)
 	nrfOpenReadingPipe(0, (uint8_t *) pipe);								
 	nrfStartListening();
 	nrfPowerUp();
+
+    address = set_address;                                                      //set device address
 }
