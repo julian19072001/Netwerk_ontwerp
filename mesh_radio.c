@@ -1,21 +1,21 @@
 /*Julian Della Guardia*/
 
 #include <avr/interrupt.h>
+#include <string.h>
 #include "mesh_radio.h"
 
-uint8_t pipe[5] = {0x30, 0x47, 0x72, 0x70, 0x45}; 		//pipe address ""
-uint8_t received_packet[32] = {0};				//create a place to store received data
-volatile uint8_t new_data = 0;                             //place to keep track if there is unprocessed data
-volatile uint8_t address = 0;
+uint8_t nRF_pipe[5] = NRF_PIPE;
 
-//check if received message was already received before
-uint8_t check_message_new(uint8_t* payload);
+// Global variables
+Package packages[MAX_PACKAGES];  // Array to store packages
+volatile uint8_t address = 0;
 
 //interrupt from NFR IC
 ISR(PORTF_INT0_vect)
 {
 	uint8_t tx_ds, max_rt, rx_dr;
 	uint8_t packet_length;
+    uint8_t received_packet[32] = {0};				//create a place to store received data
 	
 	nrfWhatHappened(&tx_ds, &max_rt, &rx_dr);
 
@@ -23,67 +23,63 @@ ISR(PORTF_INT0_vect)
 		packet_length = nrfGetDynamicPayloadSize();	 //get the size of the received data
 		nrfRead(received_packet, packet_length);	 //store the received data
 
-        if(check_message_new(received_packet)){
-            new_data = 1;
+        for (int i = 0; i < MAX_PACKAGES; i++) {
+            if (packages[i].in_use && packages[i].id == received_packet[0]) {
+                // If package exists, just update the payload and weight
+                packages[i].target_id = received_packet[1];
 
-            nrfStopListening();
-            cli();
-            nrfWrite( (uint8_t *) &received_packet, packet_length);
-            sei();
-            nrfStartListening();
+                // Use memcpy to copy the entire payload at once
+                memcpy(packages[i].payload, &received_packet[2], MAX_DATA_LENGTH);  // Copy the payload
+                packages[i].unread_data = 1;
+                packages[i].weight += 10;  // Increment weight by 10
+                if(packages[i].weight > 100) packages[i].weight = 100;
+                return;  // Done, no need to continue
+            }
+            if (!packages[i].in_use) {
+                // If an empty slot is found, store the new package
+                packages[i].id = received_packet[0];
+                packages[i].target_id = received_packet[1];
+
+                // Use memcpy to copy the entire payload at once
+                memcpy(packages[i].payload, &received_packet[2], MAX_DATA_LENGTH);  // Copy the payload
+                packages[i].unread_data = 1;
+                packages[i].weight = 10;  // Initial weight
+                packages[i].in_use = 1;  // Mark as in use
+                return;
+            }
         }
 	}
 }
 
-//check if received message was already received before
-uint8_t check_message_new(uint8_t* payload){
-    static uint8_t previous_message[256] = {0};
+//interrupt from timer counter for weight lowering
+ISR(TCC0_OVF_vect)
+{
+    for (int i = 0; i < MAX_PACKAGES; i++) {
+        if (packages[i].in_use) {
+            // Decrease weight
+            if (packages[i].weight > 0) packages[i].weight--;
 
-    if(payload[1] == previous_message[payload[0]]) return 0;
-    if(payload[0] == address) return 0;
-    
-    previous_message[payload[0]] = payload[1];
-    return 1;
-}
+            // Remove package if weight is 0
+            if (packages[i].weight == 0) packages[i].in_use = 0; // Mark as unused
 
-void send_radio_data(uint8_t data_type, uint8_t* data, uint8_t data_size){
-    
-    if(data_size > 28) return;
-
-    static uint8_t message_number = 0;
-    
-    uint8_t send_data[32] = {0};
-    send_data[0] = address;
-    send_data[1] = message_number;
-    send_data[2] = data_type;
-    send_data[3] = data_size;
-    for(int i = 0; i < data_size; i++){
-        send_data[i+4] = data[i];
+            // Check if weight exceeds threshold for trusted status
+            else if (packages[i].weight > WEIGHT_THRESHOLD) packages[i].trusted = 1; // Mark as trusted
+            
+            else packages[i].trusted = 0; // Reset trusted flag if below threshold
+        }
     }
-
-    message_number++;
-
-    //send out data
-    nrfStopListening();
-    cli();
-    nrfWrite( (uint8_t *) &send_data, data_size + 4);
-    sei();
-    nrfStartListening();
-}
-
-//return new data if there is new data
-uint8_t get_radio_data(uint8_t* data){
-    if(!new_data) return 0;
-
-    for(int i = 0; i < 32; i++) data[i] = received_packet[i];
-    new_data = 0;
-    
-    return 1;
+    send_radio_data(0,0,1);
 }
 
 //setup for NRF communication
 void radio_init(uint8_t set_address)
-{
+{   
+    //timer for lowering weights
+    TCC0.CTRLB = TC_WGMODE_NORMAL_gc;                                           //Normal mode
+    TCC0.CTRLA = TC_CLKSEL_DIV256_gc;                                            //Devide clock by 1024 so the periode isnt so big
+    TCC0.INTCTRLA = TC_OVFINTLVL_LO_gc;                                         // enable overflow interrupt low level
+    TCC0.PER = (125 * WEIGHT_LOWER_TIME);                                                           //Set lowering weight time
+
 	nrfspiInit();                                                               //initialize SPI
 	nrfBegin();                                                                 //initialize NRF module
 	nrfSetRetries(NRF_RETRY_SPEED, NRF_NUM_RETRIES);		                    //set retries
@@ -103,10 +99,75 @@ void radio_init(uint8_t set_address)
 	PORTF.INTCTRL |= (PORTF.INTCTRL & ~PORT_INT0LVL_gm) | PORT_INT0LVL_LO_gc ; 	//interrupts On
 	
 	// Opening pipes
-	nrfOpenWritingPipe((uint8_t *) pipe);								
-	nrfOpenReadingPipe(0, (uint8_t *) pipe);								
+	nrfOpenWritingPipe((uint8_t *) nRF_pipe);								
+	nrfOpenReadingPipe(0, (uint8_t *) nRF_pipe);								
 	nrfStartListening();
 	nrfPowerUp();
 
     address = set_address;                                                      //set device address
+
+    for (int i = 0; i < MAX_PACKAGES; i++) {
+        packages[i].in_use = 0;
+    }
 }
+
+void send_radio_data(uint8_t target_id, uint8_t* data, uint8_t data_size){
+    
+    if(data_size > MAX_DATA_LENGTH) return;
+
+    static uint8_t message_number = 0;
+    
+    uint8_t send_data[32] = {0};
+    send_data[0] = address;
+    send_data[1] = target_id;
+
+    for(int i = 0; i < data_size; i++){
+        send_data[i+2] = data[i];
+    }
+
+    message_number++;
+
+    //send out data
+    nrfStopListening();
+    cli();
+    nrfWrite( (uint8_t *) &send_data, data_size + 1);
+    sei();
+    nrfStartListening();
+}
+
+// Function to retrieve the package struct by ID, based on the conditions
+Package* get_radio_data(uint8_t id) {
+    cli();
+    // Iterate through all packages
+    for (int i = 0; i < MAX_PACKAGES; i++) {
+        // Check if the package is in use and the ID matches
+        if (packages[i].in_use && packages[i].target_id == id) {
+            // Check if the package is trusted and has unread data
+            if (packages[i].trusted && packages[i].unread_data) {
+                // Return the package struct if all conditions are met
+                packages[i].unread_data = 0;
+                return &packages[i];
+            } 
+            else {
+                return NULL;  // Return NULL if conditions are not met
+            }
+        }
+    }
+    sei();
+    
+    // Return NULL if the ID doesn't exist in the packages
+    return NULL;
+}
+
+// Function to print all packages
+void print_packages() {
+    for (int i = 0; i < MAX_PACKAGES; i++) {
+        if (packages[i].in_use) {
+            printf("ID: %d, Payload: %s, Weight: %d, Trusted: %d, Target id: %02X\n", 
+                   packages[i].id, packages[i].payload, 
+                   packages[i].weight, packages[i].trusted,
+                   packages[i].target_id); 
+        }
+    }
+}
+
