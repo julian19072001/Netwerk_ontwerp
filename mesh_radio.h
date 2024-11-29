@@ -44,8 +44,8 @@ typedef struct {
 
 void radio_init(uint8_t set_address);
 
-void get_radio_data_by_id(uint8_t command, uint8_t target_id, uint8_t* data, uint8_t data_size);
-Package* get_radio_data(uint8_t id);
+void send_radio_data(uint8_t command, uint8_t target_id, uint8_t* data, uint8_t data_size);
+Package* get_radio_data_by_id(uint8_t id);
 
 void print_packages();
 
