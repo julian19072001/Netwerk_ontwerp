@@ -10,6 +10,12 @@ uint8_t nRF_pipe[5] = NRF_PIPE;
 Package packages[MAX_PACKAGES];  // Array to store packages
 volatile uint8_t address = 0;
 
+// Define a struct with bit-fields
+typedef struct {
+    unsigned int index : 4;  // 4 bits for the lower nibble
+    unsigned int total : 4; // 4 bits for the higher nibble
+} IndexSplit;
+
 //interrupt from NFR IC
 ISR(PORTF_INT0_vect)
 {
@@ -43,32 +49,14 @@ ISR(PORTF_INT0_vect)
                 // Use memcpy to copy the entire payload at once
                 memcpy(packages[i].payload, &received_packet[2], MAX_DATA_LENGTH);  // Copy the payload
                 packages[i].unread_data = 1;
-                packages[i].weight = 10;  // Initial weight
-                packages[i].in_use = 1;  // Mark as in use
+                packages[i].weight = 10;    // Initial weight
+                packages[i].in_use = 1;     // Mark as in use
+                packages[i].owner = 0;      // Set closted device as itself
+                packages[i].hops  = 1;      // Set number of hops to one
                 return;
             }
         }
 	}
-}
-
-//interrupt from timer counter for weight lowering
-ISR(TCC0_OVF_vect)
-{
-    for (int i = 0; i < MAX_PACKAGES; i++) {
-        if (packages[i].in_use) {
-            // Decrease weight
-            if (packages[i].weight > 0) packages[i].weight--;
-
-            // Remove package if weight is 0
-            if (packages[i].weight == 0) packages[i].in_use = 0; // Mark as unused
-
-            // Check if weight exceeds threshold for trusted status
-            else if (packages[i].weight > WEIGHT_THRESHOLD) packages[i].trusted = 1; // Mark as trusted
-            
-            else packages[i].trusted = 0; // Reset trusted flag if below threshold
-        }
-    }
-    send_radio_data(0,0,1);
 }
 
 //setup for NRF communication
@@ -111,32 +99,43 @@ void radio_init(uint8_t set_address)
     }
 }
 
-void send_radio_data(uint8_t target_id, uint8_t* data, uint8_t data_size){
+void send_radio_data(uint8_t command, uint8_t target_id, uint8_t* data, uint8_t data_size){
     
     if(data_size > MAX_DATA_LENGTH) return;
-
-    static uint8_t message_number = 0;
     
     uint8_t send_data[32] = {0};
     send_data[0] = address;
-    send_data[1] = target_id;
+    send_data[1] = command;
+    
+    if(command == 3){
+        Package* package = get_radio_data_by_id(target_id);
+        if(package == NULL) return;
 
-    for(int i = 0; i < data_size; i++){
-        send_data[i+2] = data[i];
+        if(!package->owner) send_data[2] = target_id;
+        else send_data[2] = package->owner;
+        send_data[3] = target_id;
+
+        for(int i = 0; i < data_size; i++){
+            send_data[i+4] = data[i];
+        }
     }
-
-    message_number++;
+    else{
+        send_data[2] = target_id;
+        for(int i = 0; i < data_size; i++){
+            send_data[i+3] = data[i];
+        }
+    }
 
     //send out data
     nrfStopListening();
     cli();
-    nrfWrite( (uint8_t *) &send_data, data_size + 1);
+    nrfWrite( (uint8_t *) &send_data, data_size + 4);
     sei();
     nrfStartListening();
 }
 
 // Function to retrieve the package struct by ID, based on the conditions
-Package* get_radio_data(uint8_t id) {
+Package* get_radio_data_by_id(uint8_t id) {
     cli();
     // Iterate through all packages
     for (int i = 0; i < MAX_PACKAGES; i++) {
@@ -171,3 +170,91 @@ void print_packages() {
     }
 }
 
+
+
+
+//interrupt from timer counter for weight lowering
+ISR(TCC0_OVF_vect)
+{
+    for (int i = 0; i < MAX_PACKAGES; i++) {
+        if (packages[i].in_use && !packages[i].owner) {
+            // Decrease weight
+            if (packages[i].weight > 0) packages[i].weight--;
+
+            // Remove package if weight is 0
+            if (packages[i].weight == 0) packages[i].in_use = 0; // Mark as unused
+
+            // Check if weight exceeds threshold for trusted status
+            else if (packages[i].weight > WEIGHT_THRESHOLD) packages[i].trusted = 1; // Mark as trusted
+            
+            else packages[i].trusted = 0; // Reset trusted flag if below threshold
+        }
+    }
+    sendNextPing();
+}
+
+// Snapshot structure
+typedef struct {
+    uint8_t *messages[MAX_PACKAGES]; // Array of pointers to messages
+    size_t message_lengths[MAX_PACKAGES]; // Length of each message
+    size_t total_messages; // Total number of messages
+    size_t current_message; // Index of the next message to send
+} Snapshot;
+
+Snapshot snapshot = { .total_messages = 0, .current_message = 0 };
+
+// Create snapshot from packages for neighbord table
+void createSnapshot(Package packages[]) {
+    snapshot.total_messages = 0;
+    snapshot.current_message = 0;
+
+    uint8_t buffer[MAX_DATA_LENGTH]; // Temporary buffer
+    size_t buffer_index = 0;
+
+    for (size_t i = 0; i < MAX_PACKAGES; i++) {
+        if (packages[i].in_use && packages[i].trusted) {
+            // Add id and hops to the buffer
+            buffer[buffer_index++] = packages[i].id;
+            buffer[buffer_index++] = packages[i].hops;
+
+            // If buffer is full, store the message
+            if (buffer_index >= MAX_DATA_LENGTH) {
+                snapshot.messages[snapshot.total_messages] = malloc(buffer_index);
+                memcpy(snapshot.messages[snapshot.total_messages], buffer, buffer_index);
+                snapshot.message_lengths[snapshot.total_messages] = buffer_index;
+                snapshot.total_messages++;
+                buffer_index = 0;
+            }
+        }
+    }
+
+    // Store any remaining data in the buffer
+    if (buffer_index > 0) {
+        snapshot.messages[snapshot.total_messages] = malloc(buffer_index);
+        memcpy(snapshot.messages[snapshot.total_messages], buffer, buffer_index);
+        snapshot.message_lengths[snapshot.total_messages] = buffer_index;
+        snapshot.total_messages++;
+    }
+}
+
+// Send the next message in the snapshot with the index and total number in a separate variable
+void sendNextPing() {
+    if (snapshot.current_message >= snapshot.total_messages) createSnapshot(packages);
+
+    if (snapshot.total_messages > 0) {
+        uint8_t *message = snapshot.messages[snapshot.current_message];
+        size_t message_length = snapshot.message_lengths[snapshot.current_message];
+
+        // Pack the index and total number into a separate index byte
+        uint8_t index_byte = (snapshot.current_message << 4) | (snapshot.total_messages & 0x0F);
+
+        // Decide what command needs to send
+        uint8_t command = 0;
+        if(snapshot.current_message+1 == snapshot.total_messages) command = 2;
+        else command = 1;
+
+        // Send the message data
+        send_radio_data(command, index_byte, message, message_length);
+        snapshot.current_message++;
+    }
+}
