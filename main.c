@@ -21,7 +21,7 @@ int main(void)
 {
 	init_clock();
     init_stream(F_CPU);
-	radio_init(DEVICE_ADDRESS);
+	radioInit(DEVICE_ADDRESS);
 
 	PORTC.DIRSET = PIN0_bm;
 
@@ -31,7 +31,9 @@ int main(void)
 	
 	while(1)
 	{	
-
+		printPackages();
+		_delay_ms(500);
+		/*
 		Package* package = get_radio_data(DEVICE_ADDRESS);
 
 		if (package != NULL){
@@ -74,7 +76,7 @@ int main(void)
 				uartF0_putc(temp_Char);
 				string[index++] = temp_Char;
 			}
-        }
+        } */
 	}
 }
 
