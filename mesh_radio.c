@@ -8,10 +8,9 @@
 
 void updateWeight(uint8_t address);
 uint8_t checkTrusted(uint8_t address);
+void saveReceivedData(uint8_t *data, uint8_t dataLength);
 void saveRemoteNeighborTable(uint8_t address, uint8_t *neighborData, uint8_t dataLength, uint8_t packageIndex);
 void sendNextPing();
-
-uint8_t nRF_pipe[5] = NRF_PIPE;
 
 // Structure to store neighbor data
 typedef struct {
@@ -26,6 +25,9 @@ typedef struct {
 // Global variables
 Package packages[MAX_SENDERS];  // Array to store packages
 volatile uint8_t address = 0;
+uint8_t nRF_pipe[5] = NRF_PIPE;
+
+static volatile uint8_t rxWritePointer, rxReadPointer, rxBuffer[RX_BUFFER_DEPTH];
 
 // Setup for NRF communication
 void radioInit(uint8_t setAddress)
@@ -67,47 +69,80 @@ void radioInit(uint8_t setAddress)
     }
 }
 
-void sendDataOverRadio(uint8_t *data, uint8_t dataSize) {
-    nrfStopListening();
-    cli();
-    nrfWrite((uint8_t *) data, dataSize);
-    sei();
-    nrfStartListening();
-}
-
 void sendRadioData(uint8_t target_id, uint8_t* data, uint8_t dataSize){
     
     if(dataSize > MAX_DATA_LENGTH) return;
     
-    uint8_t send_data[32] = {0};
-    send_data[0] = address;
-    send_data[1] = COMMAND_DATA;
+    uint8_t sendData[32] = {0};
+    sendData[0] = address;
+    sendData[1] = COMMAND_DATA;
+    sendData[3] = target_id;
 
     for (int i = 0; i < MAX_SENDERS; i++) {
         // Find what owner the target ID has
         if (packages[i].inUse && packages[i].id == target_id) {
-            if(!packages[i].owner) send_data[2] == target_id;
-            else send_data[2] == packages[i].owner;
+            if(!packages[i].owner) sendData[2] = target_id;
+            else sendData[2] = packages[i].owner;
+            break;
         }
         else return; // If there is no route dont send anything
     }
 
     // Save data to be send
     for(int i = 0; i < dataSize; i++){
-        send_data[i+4] = data[i];
+        sendData[i+4] = data[i];
     }
     
     // Send out data
     nrfStopListening();
     cli();
-    nrfWrite( (uint8_t *) &send_data, dataSize + 4);
+    nrfWrite( (uint8_t *) &sendData, dataSize + 4);
     sei();
     nrfStartListening();
 }
 
+// Check if there is data to be read from NRF
+uint8_t canReadRadio(void){
+	uint8_t wridx = rxWritePointer, rdidx = rxReadPointer;
+	
+	if(wridx >= rdidx)
+		return wridx - rdidx;
+	else
+		return wridx - rdidx + RX_BUFFER_DEPTH;
+	
+}
 
-// Function to print all packages
-void printPackages() {
+// Read first received package in buffer
+uint8_t readRadioMessage(uint8_t *dataLocation) {
+    uint8_t numberOfBytes = 0;
+    
+    for(int i = 0; i < MAX_DATA_LENGTH; i++){
+        uint8_t res, curSlot, nextSlot;
+        
+        curSlot = rxReadPointer;
+        
+        // Check if there is data to be read in buffer
+        if(!canReadRadio()) break;
+        
+        res = rxBuffer[curSlot];
+
+        nextSlot = curSlot + 1;
+        if(nextSlot >= RX_BUFFER_DEPTH)
+            nextSlot = 0;
+        rxReadPointer = nextSlot;
+        
+        // If return carriage is found end the data package
+        if(res == '\r') break;
+
+        dataLocation[i] = res;
+        numberOfBytes++;
+    }
+
+    return numberOfBytes;
+}
+
+// Function to print all Neigbors
+void printNeighbors() {
     for (int i = 0; i < MAX_SENDERS; i++) {
         if (packages[i].inUse) {
             printf("ID: %d, hops: %d, Weight: %d, Trusted: %d, Owner: %d\n", 
@@ -136,23 +171,32 @@ ISR(PORTF_INT0_vect)
 		packetLength = nrfGetDynamicPayloadSize();	    // Get the size of the received data
 		nrfRead(received_packet, packetLength);	        // Store the received data
 
-        cli();
+        //cli();
 
         updateWeight(received_packet[0]);
         if(!checkTrusted(received_packet[0])) return;
 
         // Check what command has been send with data
         switch (received_packet[1]) {
+        // In case the data was a ping save the data in neighbor table
         case COMMAND_PING:
         case COMMAND_PING_END:
             saveRemoteNeighborTable(received_packet[0], &received_packet[3], packetLength - 2, received_packet[2]);
             break;
         
+        // In case the data was sensor data send it over if the data was ment for me and otherwise save it in buffer
+        case COMMAND_DATA:
+            if(received_packet[2] == address){
+                if(received_packet[3] != address) sendRadioData(received_packet[3], received_packet + 4, packetLength - 4); 
+                else saveReceivedData(received_packet + 4, packetLength - 4);
+            }
+            break;
+
         default:
             break;
         }
 
-        sei();
+        //sei();
 	}
 }
 
@@ -194,6 +238,28 @@ uint8_t checkTrusted(uint8_t checkAddress){
     }
 
     return 0;
+}
+
+// Save the received data in a receive buffer
+void saveReceivedData(uint8_t *data, uint8_t dataLength){
+    for(int i = 0; i < (dataLength + 1); i++){
+        uint8_t curSlot, nextSlot;
+        
+        curSlot = rxWritePointer;
+
+        // Save data in buffer and put a return carriage at the end of the message
+        if(i == dataLength) rxBuffer[curSlot] = '\r';
+        else rxBuffer[curSlot] = data[i];
+        
+        // Move over to the next slot and if the buffer depth has been reached loop back around
+        nextSlot = curSlot + 1;
+        if(nextSlot >= RX_BUFFER_DEPTH)
+        nextSlot = 0;
+        
+        // Prevent overriding none read data
+        if(nextSlot != rxReadPointer)
+        rxWritePointer = nextSlot;
+    }
 }
 //##### End of code for receiving packages ################################################################################################################
 

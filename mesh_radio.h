@@ -19,23 +19,40 @@
 #define NRF_CRC_LENGTH  NRF_CONFIG_CRC_16_gc            //CRC check length
 #define NRF_AUTO_ACK    0                               //turn off auto acknowlage
 
-#define NRF_CHANNEL     24                              //NRF channel 24
-#define NRF_PIPE  {0x30, 0x47, 0x72, 0x70, 0x44} 	    //pipe address ""
+#define NRF_CHANNEL     54                              //NRF channel 54
+#define NRF_PIPE  {0x30, 0x47, 0x72, 0x70, 0x45} 	    //pipe address ""
 
 #define MAX_SENDERS 50                                  //Maximum number of senders
 #define MAX_DATA_LENGTH 28                              //Length of the payload data (excluding the ID)
 #define WEIGHT_THRESHOLD 30                             //Threshold above which a package is trusted
 #define WEIGHT_LOWER_TIME 100                           //Time in milliseconds it takes for the weight to lower by 1 
-#define WEIGHT_MAX 100                                  //Maximium number a weight can be 
+#define WEIGHT_MAX 70                                   //Maximium number a weight can be 
+
+#define RX_BUFFER_DEPTH     200
 
 #define COMMAND_PING        0x01
 #define COMMAND_PING_END    0x02
 #define COMMAND_DATA        0x03
 
+// Initialize the NRF radio, needs to be given a address so the network can identify how it is
 void radioInit(uint8_t set_address);
 
+
+// Send data over NRF
+// targetId = Intented destination for data
+// data = data to be send
+// dataSize = number of bytes to be send (Cannot go beyond MAX_DATA_LENGHT)
 void sendRadioData(uint8_t target_id, uint8_t* data, uint8_t data_size);
 
-void printPackages();
+// Check if there is data in the buffer to be read
+uint8_t canReadRadio(void);
+
+// read the first received message in buffer, returns the number of bytes in the message
+// dataLocation = place where data needs to be saved
+uint8_t readRadioMessage(uint8_t *dataLocation);
+
+
+// Prints all the neighbors and there important values
+void printNeighbors();
 
 #endif // MESH_RADIO_H_

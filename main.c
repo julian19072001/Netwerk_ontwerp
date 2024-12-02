@@ -14,7 +14,7 @@
 #include "serialF0.h"
 #include "mesh_radio.h"
 
-#define DEVICE_ADDRESS  0x01                           //address of device (each address can only be used once in a network)
+#define DEVICE_ADDRESS  0x42                           //address of device (each address can only be used once in a network)
 
 
 int main(void)
@@ -31,13 +31,15 @@ int main(void)
 	
 	while(1)
 	{	
-		printPackages();
-		_delay_ms(500);
-		/*
-		Package* package = get_radio_data(DEVICE_ADDRESS);
+		//printNeighbors();
+		//_delay_ms(500);
+		uint8_t data[MAX_DATA_LENGTH] = {0};
+		
+		uint8_t numByte = readRadioMessage(data);
 
-		if (package != NULL){
-			printf("From: %02X, Payload: %s\n", package->id, package->payload);  // Process the payload
+		if (numByte){
+			data[numByte] = '\0';
+			printf("From: %02X, Payload: %s, numByte: %d\n", data[0], data + 1, numByte);  // Process the payload
 		} 
 
 		if(CanRead_F0()){
@@ -56,8 +58,8 @@ int main(void)
 				char temp_string[32];
 				strcpy(temp_string, string);
 
-				uint8_t first_str[30];
-				uint8_t second_str[30];  // Array to store the second part (string)
+				uint8_t first_str[28];
+				uint8_t second_str[28];  // Array to store the second part (string)
 			
 				// Find the first space and separate the parts
 				char* token = strtok(temp_string, " ");
@@ -66,9 +68,10 @@ int main(void)
 					// Get the rest of the string (after the first space)
 					char* rest = string + (token - temp_string) + strlen(first_str);
 					strcpy(second_str, rest);
+					second_str[0] = DEVICE_ADDRESS;
 				}
 				
-				send_radio_data(atoi(first_str), second_str, sizeof(second_str));	
+				sendRadioData(atoi(first_str), second_str, strlen(second_str));	
 				free(string);
 				index = 0;
 			} 
@@ -76,7 +79,7 @@ int main(void)
 				uartF0_putc(temp_Char);
 				string[index++] = temp_Char;
 			}
-        } */
+        } 
 	}
 }
 
