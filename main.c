@@ -31,15 +31,13 @@ int main(void)
 	
 	while(1)
 	{	
-		//printNeighbors();
-		//_delay_ms(500);
 		uint8_t data[MAX_DATA_LENGTH] = {0};
 		
 		uint8_t numByte = readRadioMessage(data);
 
 		if (numByte){
 			data[numByte] = '\0';
-			printf("From: %02X, Payload: %s, numByte: %d\n", data[0], data + 1, numByte);  // Process the payload
+			printf("From: %02d, Payload: %s, numByte: %d\n", data[0], data + 1, numByte);  // Process the payload
 		} 
 
 		if(CanRead_F0()){
@@ -49,6 +47,7 @@ int main(void)
             uint8_t temp_Char = uartF0_getc();
 
 			if(temp_Char == '\r') {
+				if(!index) continue;
 				uartF0_putc('\r');
 				uartF0_putc('\n');
 
@@ -74,7 +73,10 @@ int main(void)
 				sendRadioData(atoi(first_str), second_str, strlen(second_str));	
 				free(string);
 				index = 0;
-			} 
+			}
+			else if(temp_Char == 'N'){
+				printNeighbors();
+			}
 			else{
 				uartF0_putc(temp_Char);
 				string[index++] = temp_Char;

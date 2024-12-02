@@ -76,6 +76,7 @@ void sendRadioData(uint8_t target_id, uint8_t* data, uint8_t dataSize){
     uint8_t sendData[32] = {0};
     sendData[0] = address;
     sendData[1] = COMMAND_DATA;
+    sendData[2] = 0;
     sendData[3] = target_id;
 
     for (int i = 0; i < MAX_SENDERS; i++) {
@@ -85,14 +86,16 @@ void sendRadioData(uint8_t target_id, uint8_t* data, uint8_t dataSize){
             else sendData[2] = packages[i].owner;
             break;
         }
-        else return; // If there is no route dont send anything
     }
+
+    // If there is no route dont send anything
+    if(!sendData[2]) return;
 
     // Save data to be send
     for(int i = 0; i < dataSize; i++){
         sendData[i+4] = data[i];
     }
-    
+
     // Send out data
     nrfStopListening();
     cli();
@@ -171,7 +174,7 @@ ISR(PORTF_INT0_vect)
 		packetLength = nrfGetDynamicPayloadSize();	    // Get the size of the received data
 		nrfRead(received_packet, packetLength);	        // Store the received data
 
-        //cli();
+        cli();
 
         updateWeight(received_packet[0]);
         if(!checkTrusted(received_packet[0])) return;
@@ -196,7 +199,7 @@ ISR(PORTF_INT0_vect)
             break;
         }
 
-        //sei();
+        sei();
 	}
 }
 
@@ -319,13 +322,13 @@ void processData(uint8_t *data, uint16_t dataLength, uint8_t owner) {
         uint8_t hops = data[i + 1];
 
         if (id == 0x00) break; // End of valid data, stop parsing
-        if (id == address) break;
+        if (id == address) continue;
 
         // Store the ID and hops pair
         for (int i = 0; i < MAX_SENDERS; i++) {
             if (packages[i].inUse && packages[i].id == id) {
                 // If package exists, just update the hops if the hops are lower
-                if(packages[i].hops > hops) {
+                if(packages[i].hops > hops + 1 || !packages[i].trusted) {
                     packages[i].owner = owner;
                     packages[i].hops = hops + 1;
                 }
@@ -414,10 +417,10 @@ void saveRemoteNeighborTable(uint8_t address, uint8_t *neighborData, uint8_t dat
 ISR(TCC0_OVF_vect)
 {
     for (int i = 0; i < MAX_SENDERS; i++) {
-        if (packages[i].inUse && !packages[i].owner) {
-            // Decrease weight
-            if (packages[i].weight > 0) packages[i].weight--;
+        // Decrease weight
+        if (packages[i].weight > 0) packages[i].weight--;
 
+        if (packages[i].inUse && !packages[i].owner) {
             // Remove package if weight is 0
             if (packages[i].weight == 0) {
                 packages[i].inUse = 0; // Mark as unused
