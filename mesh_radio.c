@@ -4,8 +4,10 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include "secret_key.h"
 #include "mesh_radio.h"
 
+void encryption(uint8_t *data, uint8_t dataSize);
 void updateWeight(uint8_t address);
 uint8_t checkTrusted(uint8_t address);
 void saveReceivedData(uint8_t *data, uint8_t dataLength);
@@ -91,6 +93,9 @@ void sendRadioData(uint8_t target_id, uint8_t* data, uint8_t dataSize){
     // If there is no route dont send anything
     if(!sendData[2]) return;
 
+    // Encrypt data
+    encryption(data, dataSize);
+
     // Save data to be send
     for(int i = 0; i < dataSize; i++){
         sendData[i+4] = data[i];
@@ -141,6 +146,10 @@ uint8_t readRadioMessage(uint8_t *dataLocation) {
         numberOfBytes++;
     }
 
+    // Decrypt data
+    encryption(dataLocation, numberOfBytes);
+
+    // Return the size of the data
     return numberOfBytes;
 }
 
@@ -153,6 +162,14 @@ void printNeighbors() {
                    packages[i].weight, packages[i].trusted,
                    packages[i].owner); 
         }
+    }
+}
+
+// Function for both encrypting and decrypting
+void encryption(uint8_t *data, uint8_t dataSize){
+    uint8_t key[] = SECRET_KEY;
+    for (uint8_t i = 0; i < dataSize; ++i) {
+        data[i] ^= key[i % sizeof(key)];
     }
 }
 
@@ -178,6 +195,8 @@ ISR(PORTF_INT0_vect)
 
         updateWeight(received_packet[0]);
         if(!checkTrusted(received_packet[0])) return;
+
+        //printf("%02X %02X %02X %02X %02X %02X\n", received_packet[0], received_packet[1], received_packet[2], received_packet[3], received_packet[4], received_packet[5]);
 
         // Check what command has been send with data
         switch (received_packet[1]) {
@@ -321,8 +340,10 @@ void processData(uint8_t *data, uint16_t dataLength, uint8_t owner) {
         uint8_t id = data[i];
         uint8_t hops = data[i + 1];
 
-        if (id == 0x00) break; // End of valid data, stop parsing
-        if (id == address) continue;
+        if (id == 0x00) break;          // End of valid data, stop parsing
+        if (id == address) continue;    // If ID is myself continue
+        if (hops >= MAX_HOPS) continue; // If hops amount is above maximum amount of hops continue
+
 
         // Store the ID and hops pair
         for (int i = 0; i < MAX_SENDERS; i++) {
@@ -448,9 +469,9 @@ ISR(TCC0_OVF_vect)
 // Snapshot structure
 typedef struct {
     uint8_t *messages[MAX_SENDERS]; // Array of pointers to messages
-    size_t messageLengths[MAX_SENDERS]; // Length of each message
-    size_t totalMessages; // Total number of messages
-    size_t currentMessage; // Index of the next message to send
+    uint8_t messageLengths[MAX_SENDERS]; // Length of each message
+    uint8_t totalMessages; // Total number of messages
+    uint8_t currentMessage; // Index of the next message to send
 } Snapshot;
 
 Snapshot snapshot = { .totalMessages = 0, .currentMessage = 0 };
@@ -461,9 +482,9 @@ void createSnapshot(Package packages[]) {
     snapshot.currentMessage = 0;
 
     uint8_t buffer[MAX_DATA_LENGTH]; // Temporary buffer
-    size_t bufferIndex = 0;
+    uint8_t bufferIndex = 0;
 
-    for (size_t i = 0; i < MAX_SENDERS; i++) {
+    for (uint8_t i = 0; i < MAX_SENDERS; i++) {
         if (packages[i].inUse && packages[i].trusted) {
             // Add id and hops to the buffer
             buffer[bufferIndex++] = packages[i].id;
@@ -495,7 +516,7 @@ void sendNextPing() {
 
     if (snapshot.totalMessages > 0) {
         uint8_t *message = snapshot.messages[snapshot.currentMessage];
-        size_t messageLength = snapshot.messageLengths[snapshot.currentMessage];
+        uint8_t messageLength = snapshot.messageLengths[snapshot.currentMessage];
 
         // Pack the index and total number into a separate index byte
         uint8_t indexByte = (snapshot.currentMessage << 4) | (snapshot.totalMessages & 0x0F);

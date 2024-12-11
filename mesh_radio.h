@@ -26,13 +26,16 @@
 #define MAX_DATA_LENGTH 28                              //Length of the payload data (excluding the ID)
 #define WEIGHT_THRESHOLD 30                             //Threshold above which a package is trusted
 #define WEIGHT_LOWER_TIME 100                           //Time in milliseconds it takes for the weight to lower by 1 
-#define WEIGHT_MAX 70                                   //Maximium number a weight can be 
+#define WEIGHT_MAX 70                                   //Maximium number a weight can be
+#define MAX_HOPS 15                                     //Maximium amount of hops before sensor gets dropped (to prevent ghost nodes) 
 
 #define RX_BUFFER_DEPTH     200
 
 #define COMMAND_PING        0x01
 #define COMMAND_PING_END    0x02
 #define COMMAND_DATA        0x03
+
+#define BASE_ADDRESS        0x40
 
 // Initialize the NRF radio, needs to be given a address so the network can identify how it is
 void radioInit(uint8_t set_address);

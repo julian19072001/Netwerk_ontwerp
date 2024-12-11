@@ -14,7 +14,7 @@
 #include "serialF0.h"
 #include "mesh_radio.h"
 
-#define DEVICE_ADDRESS  0x42                           //address of device (each address can only be used once in a network)
+#define DEVICE_ADDRESS  0x41                           //address of device (each address can only be used once in a network)
 
 
 int main(void)

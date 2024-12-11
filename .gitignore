@@ -1,2 +1,7 @@
 makefile
 make-data/
+secret_key.h
+make-data/.elf
+make-data/.hex
+make-data/main.o
+make-data/mesh_radio.o
