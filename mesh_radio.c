@@ -71,7 +71,7 @@ void radioInit(uint8_t setAddress)
     }
 }
 
-void sendRadioData(uint8_t target_id, uint8_t* data, uint8_t dataSize){
+void sendRadioData(uint8_t target_id, uint8_t* data, uint8_t dataSize, bool encrypt){
     
     if(dataSize > MAX_DATA_LENGTH) return;
     
@@ -94,7 +94,7 @@ void sendRadioData(uint8_t target_id, uint8_t* data, uint8_t dataSize){
     if(!sendData[2]) return;
 
     // Encrypt data
-    encryption(data, dataSize);
+    if(encrypt) encryption(data, dataSize);
 
     // Save data to be send
     for(int i = 0; i < dataSize; i++){

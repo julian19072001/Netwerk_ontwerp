@@ -45,7 +45,7 @@ void radioInit(uint8_t set_address);
 // targetId = Intented destination for data
 // data = data to be send
 // dataSize = number of bytes to be send (Cannot go beyond MAX_DATA_LENGHT)
-void sendRadioData(uint8_t target_id, uint8_t* data, uint8_t data_size);
+void sendRadioData(uint8_t target_id, uint8_t* data, uint8_t data_size, bool encrypt);
 
 // Check if there is data in the buffer to be read
 uint8_t canReadRadio(void);
