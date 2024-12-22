@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include "secret_key.h"
 #include "mesh_radio.h"
+#include "address.h"
 
 void encryption(uint8_t *data, uint8_t dataSize);
 void updateWeight(uint8_t address);
@@ -209,7 +210,7 @@ ISR(PORTF_INT0_vect)
         // In case the data was sensor data send it over if the data was ment for me and otherwise save it in buffer
         case COMMAND_DATA:
             if(received_packet[2] == address){
-                if(received_packet[3] != address) sendRadioData(received_packet[3], received_packet + 4, packetLength - 4); 
+                if(received_packet[3] != address) sendRadioData(received_packet[3], received_packet + 4, packetLength - 4, false); 
                 else saveReceivedData(received_packet + 4, packetLength - 4);
             }
             break;

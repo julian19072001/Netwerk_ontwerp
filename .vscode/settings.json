@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "mesh_radio.h": "c",
+        "delay.h": "c"
+    }
+}

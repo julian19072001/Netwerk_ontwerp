@@ -12,76 +12,91 @@
 
 #include "clock.h"
 #include "serialF0.h"
-#include "mesh_radio.h"
+#include "radio_libraries/mesh_radio.h"
+#include "radio_libraries/address.h"
+#include "sensor_libraries/BME280.h"
 
-#define DEVICE_ADDRESS  0x41                           //address of device (each address can only be used once in a network)
-
+void float_to_uint8_array(float value, uint8_t* array) {
+    // Use a pointer to access the float's bytes
+    uint8_t* float_ptr = (uint8_t*)&value;
+    for (int i = 0; i < sizeof(float); i++) {
+        array[i] = float_ptr[i];
+    }
+}
 
 int main(void)
 {
 	init_clock();
     init_stream(F_CPU);
-	radioInit(DEVICE_ADDRESS);
 
-	PORTC.DIRSET = PIN0_bm;
+	// Get network address from hardware switches
+	uint8_t address = getSensorAddress();
+	radioInit(address);
 
-	PMIC.CTRL |= PMIC_LOLVLEN_bm;			//turn on low level interrupts	
+	// Setup for identifying blink
+	uint8_t blinking = 254;
+	PORTC.DIRSET = PIN0_bm;		
+
+	PMIC.CTRL |= PMIC_LOLVLEN_bm;			// Turn on low level interrupts	
 
 	sei();
+
+	// Initialze correct sensor for selected address
+	if(address >= TEMP_HUMID_START_ADDRESS && address <= TEMP_HUMID_END_ADDRESS)
+		init_BME280(F_CPU);       // Initialize BME280 sensor
+	else if(address >= LIGHT_START_ADDRESS && address <= LIGHT_END_ADDRESS)
+		printf("init light things\n"); // Initialize light sensor
+	else if(address >= GROUND_WATER_START_ADDRESS && address <= GROUND_WATER_END_ADDRESS)
+		printf("init ground water things\n"); // Initialize light sensor
 	
 	while(1)
 	{	
+		// Code for identifying blink
 		uint8_t data[MAX_DATA_LENGTH] = {0};
-		
-		uint8_t numByte = readRadioMessage(data);
+		uint8_t numByte = readRadioMessage(data);	// Get last message from NRF
 
-		if (numByte){
-			data[numByte] = '\0';
-			printf("From: %02d, Payload: %s, numByte: %d\n", data[0], data + 1, numByte);  // Process the payload
+		// Check if the received data is for blinking, if so then activated the blinking
+		if(numByte){	
+			if(data[0] == BASE_ADDRESS && data[1] == DATA_IDENTFY) blinking = 0;
 		} 
 
-		if(CanRead_F0()){
-			
-			static uint8_t *string = {0};    
-			static int index = 0;                               
-            uint8_t temp_Char = uartF0_getc();
+		// If the blinking variable hasnt passed the time then toggle the LED
+		if(blinking < BLINK_LENGHT * 5){
+			PORTC.OUTTGL = PIN0_bm;
+			blinking ++;
+		}
+		// Else turn LED off
+		else PORTC.OUTCLR = PIN0_bm;
 
-			if(temp_Char == '\r') {
-				if(!index) continue;
-				uartF0_putc('\r');
-				uartF0_putc('\n');
+		uint8_t sendData[MAX_DATA_LENGTH];	// Create an array for the data to be send
+		sendData[0] = address;				// Set first byte as original sender address
+		// If node is tempature and humidity node
+		if(address >= TEMP_HUMID_START_ADDRESS && address <= TEMP_HUMID_END_ADDRESS){
+			uint8_t BME280Data[4];
+			read_BME280(BME280_ADDRESS_1);  // Read data from BME280 sensor
 
-				string[index++] = '\0';
+			float_to_uint8_array(getTemperature_C(), BME280Data);	// Read temperature from BME280 data and move into uint8_t array
 
-				// Copy the input string to a temporary buffer to avoid modifying the original
-				char temp_string[32];
-				strcpy(temp_string, string);
+			memcpy(&sendData[2], BME280Data, 4);
+			sendData[1] = DATA_TEMP;		// Set the data type in message as temperature
+			sendRadioData(BASE_ADDRESS, sendData, 6, true);
+			memset(BME280Data, 0, sizeof(BME280Data));
 
-				uint8_t first_str[28];
-				uint8_t second_str[28];  // Array to store the second part (string)
-			
-				// Find the first space and separate the parts
-				char* token = strtok(temp_string, " ");
-				if (token != NULL) {
-					strcpy(first_str, token); // First part
-					// Get the rest of the string (after the first space)
-					char* rest = string + (token - temp_string) + strlen(first_str);
-					strcpy(second_str, rest);
-					second_str[0] = DEVICE_ADDRESS;
-				}
-				
-				sendRadioData(atoi(first_str), second_str, strlen(second_str));	
-				free(string);
-				index = 0;
-			}
-			else if(temp_Char == 'N'){
-				printNeighbors();
-			}
-			else{
-				uartF0_putc(temp_Char);
-				string[index++] = temp_Char;
-			}
-        } 
+			_delay_ms(TIME_BETWEEN_DATA);
+
+			float_to_uint8_array(getHumidity(), BME280Data);	// Read humidity from BME280 data and move into uint8_t array
+
+			memcpy(&sendData[2], BME280Data, 4);
+			sendData[1] = DATA_HUMID;		// Set the data type in message as humidity
+			sendRadioData(BASE_ADDRESS, sendData, 6, true);
+			memset(BME280Data, 0, sizeof(BME280Data));
+		}
+		else if(address >= LIGHT_START_ADDRESS && address <= LIGHT_END_ADDRESS)
+			printf("send light things\n"); 		
+		else if(address >= GROUND_WATER_START_ADDRESS && address <= GROUND_WATER_END_ADDRESS)
+			printf("send ground water things\n");
+
+		_delay_ms(TIME_BETWEEN_DATA); 
 	}
 }
 
