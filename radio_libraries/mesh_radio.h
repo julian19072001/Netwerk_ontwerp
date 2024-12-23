@@ -16,7 +16,7 @@
 #define NRF_CRC_LENGTH  NRF_CONFIG_CRC_16_gc            // CRC check length
 #define NRF_AUTO_ACK    0                               // turn off auto acknowlage
 
-#define NRF_CHANNEL     54                              // NRF channel 54
+#define NRF_CHANNEL    69                               // NRF channel 69
 #define NRF_PIPE  {0x30, 0x47, 0x72, 0x70, 0x45} 	    // pipe address ""
 
 #define MAX_SENDERS 50                                  // Maximum number of senders

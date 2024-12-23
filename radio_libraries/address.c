@@ -18,5 +18,5 @@ uint8_t getSensorAddress(void){
     PORTB.PIN7CTRL = PORT_OPC_PULLUP_gc;
 
     // Read the value of Port B input pins
-    return PORTB.IN;
+    return ~PORTB.IN;
 }
