@@ -4,6 +4,7 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <avr/wdt.h>
 #include <util/delay.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +27,7 @@ int main(void)
 {
 	init_clock();
     init_stream(F_CPU);
+	wdt_enable(WDT_PER_4KCLK_gc); 	// Enable a watchdog to prevent process from becoming stuck 
 
 	// Get network address from hardware switches
 	uint8_t address = getSensorAddress();
@@ -53,7 +55,9 @@ int main(void)
 		printf("init light things\n"); // Initialize light sensor
 	else if(address >= GROUND_WATER_START_ADDRESS && address <= GROUND_WATER_END_ADDRESS)
 		printf("init ground water things\n"); // Initialize light sensor
-	
+
+	uint8_t testNum = 0;
+
 	while(1)
 	{	
 		statusBlink();
@@ -67,7 +71,19 @@ int main(void)
 			printf("send light things\n"); 		
 		else if(address >= GROUND_WATER_START_ADDRESS && address <= GROUND_WATER_END_ADDRESS)
 			printf("send ground water things\n");
+		else if(address >= TEST_START_ADDRESS && address <= TEST_END_ADDRESS){
+			uint8_t sendData[MAX_DATA_LENGTH];	// Create an array for the data to be send
 
+			sendData[0] = address;
+			sendData[1] = DATA_TEST;
+			sendData[2] = testNum;
+			sendRadioData(BASE_ADDRESS, sendData, 3, false);
+			printf("send test things\n");
+
+			testNum++;
+		}
+		
+		wdt_reset();	// Reset watchdog timer
 		_delay_ms(TIME_BETWEEN_DATA); 
 	}
 }

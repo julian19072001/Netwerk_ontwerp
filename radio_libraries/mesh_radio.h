@@ -40,6 +40,7 @@
 #define DATA_HUMID          0x03
 #define DATA_LIGHT          0x04
 #define DATA_GROUND_HUMID   0x05
+#define DATA_TEST           0x06
 
 
 // Initialize the NRF radio, needs to be given a address so the network can identify how it is

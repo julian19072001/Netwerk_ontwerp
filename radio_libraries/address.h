@@ -13,6 +13,8 @@
 #define LIGHT_END_ADDRESS           0x5F
 #define GROUND_WATER_START_ADDRESS  0x60
 #define GROUND_WATER_END_ADDRESS    0x6F
+#define TEST_START_ADDRESS          0x70
+#define TEST_END_ADDRESS            0x7F
 
 uint8_t getSensorAddress(void);
 
