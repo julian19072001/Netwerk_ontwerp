@@ -23,10 +23,49 @@ void statusBlink();
 // While loop function for the temperature and humidity node
 void temparureAndHumidity(uint8_t address);
 
-int main(void)
-{
+// Convert ADC value to real value float for water level
+float WaterNiveau_converter(double raw_adc){
+	static float Sensordata;
+	
+	Sensordata = (float) (raw_adc/(1.95)*100);
+	
+	return Sensordata;
+}
+
+// Convert ADC value to real value float for light level
+float licht_converter(double raw_adc){
+	static float Sensordata;
+	
+	Sensordata = (float) (raw_adc/(1.949)*1000-5);
+	
+	return Sensordata;
+}
+
+void init_adc(void){
+  PORTA.DIRCLR     = PIN2_bm;                          // configure PA2 as input for ADCA
+  ADCA.CH0.MUXCTRL = ADC_CH_MUXPOS_PIN2_gc;            // PA2 to channel 0
+  ADCA.CH0.CTRL    = ADC_CH_INPUTMODE_SINGLEENDED_gc;  // channel 0 single-ended
+  ADCA.REFCTRL     = ADC_REFSEL_INTVCC_gc;             // internal VCC/1.6 reference
+  ADCA.CTRLB       = ADC_RESOLUTION_12BIT_gc;          // 12 bits conversion, unsigned, no freerun
+  ADCA.PRESCALER   = ADC_PRESCALER_DIV16_gc;           // 2MHz/16 = 125kHz
+  ADCA.CTRLA       = ADC_ENABLE_bm;                    // enable adc
+}
+
+uint16_t read_adc(void){
+  uint16_t res;
+
+  ADCA.CH0.CTRL |= ADC_CH_START_bm;                    // start ADC conversion
+  while ( !(ADCA.CH0.INTFLAGS & ADC_CH_CHIF_bm) ) ;    // wait until it's ready
+  res = ADCA.CH0.RES;
+  ADCA.CH0.INTFLAGS |= ADC_CH_CHIF_bm;                 // reset interrupt flag
+
+  return res;                                          // return measured value
+}
+
+int main(void){
 	init_clock();
     init_stream(F_CPU);
+	init_adc();
 	wdt_enable(WDT_PER_4KCLK_gc); 	// Enable a watchdog to prevent process from becoming stuck 
 
 	// Get network address from hardware switches
@@ -58,8 +97,7 @@ int main(void)
 
 	uint8_t testNum = 0;
 
-	while(1)
-	{	
+	while(1){	
 		statusBlink();
 
 		// If node is tempature and humidity node
