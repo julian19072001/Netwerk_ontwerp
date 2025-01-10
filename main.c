@@ -22,21 +22,27 @@
 void statusBlink();
 // While loop function for the temperature and humidity node
 void temparureAndHumidity(uint8_t address);
+// While loop function for sending light level data
+void lightLevel(uint8_t address, uint16_t sensorData);
+// While loop function for ground water
+void groundWater(uint8_t address, uint16_t sensorData);
 
 // Convert ADC value to real value float for water level
-float WaterNiveau_converter(double raw_adc){
+float WaterLevelConverter(double raw_adc){
 	static float Sensordata;
 	
-	Sensordata = (float) (raw_adc/(1.95)*100);
+	if(raw_adc > 4050) Sensordata = 1000;
+	else Sensordata = (float) (raw_adc/(40.96));
 	
 	return Sensordata;
 }
 
 // Convert ADC value to real value float for light level
-float licht_converter(double raw_adc){
+float lightConverter(double raw_adc){
 	static float Sensordata;
 	
-	Sensordata = (float) (raw_adc/(1.949)*1000-5);
+	if(raw_adc > 4050) Sensordata = 1000;
+	else Sensordata = (float) (raw_adc/(4.096));
 	
 	return Sensordata;
 }
@@ -51,7 +57,7 @@ void init_adc(void){
   ADCA.CTRLA       = ADC_ENABLE_bm;                    // enable adc
 }
 
-uint16_t read_adc(void){
+uint16_t readAdc(void){
   uint16_t res;
 
   ADCA.CH0.CTRL |= ADC_CH_START_bm;                    // start ADC conversion
@@ -90,25 +96,30 @@ int main(void){
 		PORTE.OUTCLR = PIN2_bm;
 		PORTE.OUTSET = PIN3_bm;
 	}
-	else if(address >= LIGHT_START_ADDRESS && address <= LIGHT_END_ADDRESS)
-		printf("init light things\n"); // Initialize light sensor
-	else if(address >= GROUND_WATER_START_ADDRESS && address <= GROUND_WATER_END_ADDRESS)
-		printf("init ground water things\n"); // Initialize light sensor
+	else if(address >= LIGHT_START_ADDRESS && address <= LIGHT_END_ADDRESS){
+		PORTA.DIRSET = PIN1_bm | PIN3_bm;
+		PORTA.OUTCLR = PIN1_bm;
+		PORTA.OUTSET = PIN3_bm;
+	}
+	else if(address >= GROUND_WATER_START_ADDRESS && address <= GROUND_WATER_END_ADDRESS){
+		PORTA.DIRSET = PIN1_bm | PIN3_bm;
+		PORTA.OUTCLR = PIN1_bm;
+		PORTA.OUTSET = PIN3_bm;
+	}
 
 	uint8_t testNum = 0;
 
 	while(1){	
 		statusBlink();
 
+		uint16_t sensorValue = readAdc();
 		// If node is tempature and humidity node
-		if(address >= TEMP_HUMID_START_ADDRESS && address <= TEMP_HUMID_END_ADDRESS){
-			temparureAndHumidity(address);
-			printf("send temp things\n"); 	
-		}
+		if(address >= TEMP_HUMID_START_ADDRESS && address <= TEMP_HUMID_END_ADDRESS)
+			temparureAndHumidity(address);	
 		else if(address >= LIGHT_START_ADDRESS && address <= LIGHT_END_ADDRESS)
-			printf("send light things\n"); 		
+			lightLevel(address, sensorValue); 		
 		else if(address >= GROUND_WATER_START_ADDRESS && address <= GROUND_WATER_END_ADDRESS)
-			printf("send ground water things\n");
+			groundWater(address, sensorValue); 
 		else if(address >= TEST_START_ADDRESS && address <= TEST_END_ADDRESS){
 			uint8_t sendData[MAX_DATA_LENGTH];	// Create an array for the data to be send
 
@@ -127,7 +138,7 @@ int main(void){
 }
 
 // Function to convert float into uint8_t array
-void float_to_uint8_array(float value, uint8_t* array) {
+void floatToUint8Array(float value, uint8_t* array) {
     // Use a pointer to access the float's bytes
     uint8_t* float_ptr = (uint8_t*)&value;
     for (int i = 0; i < sizeof(float); i++) {
@@ -163,7 +174,7 @@ void temparureAndHumidity(uint8_t address){
 	uint8_t BME280Data[4];
 	read_BME280(BME280_ADDRESS_1);  // Read data from BME280 
 
-	float_to_uint8_array(getTemperature_C(), BME280Data);	// Read temperature from BME280 data and move into uint8_t array
+	floatToUint8Array(getTemperature_C(), BME280Data);	// Read temperature from BME280 data and move into uint8_t array
 
 	memcpy(&sendData[2], BME280Data, 4);
 	sendData[0] = address;			// Set first byte as original sender address
@@ -173,11 +184,47 @@ void temparureAndHumidity(uint8_t address){
 
 	_delay_ms(TIME_BETWEEN_DATA);
 
-	float_to_uint8_array(getHumidity(), BME280Data);	// Read humidity from BME280 data and move into uint8_t array
+	floatToUint8Array(getHumidity(), BME280Data);	// Read humidity from BME280 data and move into uint8_t array
 
 	memcpy(&sendData[2], BME280Data, 4);
 	sendData[0] = address;			// Set first byte as original sender address
 	sendData[1] = DATA_HUMID;		// Set the data type in message as humidity
 	sendRadioData(BASE_ADDRESS, sendData, 6, true);
 	memset(BME280Data, 0, sizeof(BME280Data));
+
+	printf("send temp things\n"); 
+}
+
+// While loop function for sending light level data
+void lightLevel(uint8_t address, uint16_t sensorData){
+	uint8_t sendData[MAX_DATA_LENGTH];	// Create an array for the data to be send
+
+	uint8_t lightLevel[4];
+
+	floatToUint8Array(lightConverter(sensorData), lightLevel);
+
+	memcpy(&sendData[2], lightLevel, 4);
+	sendData[0] = address;			// Set first byte as original sender address
+	sendData[1] = DATA_LIGHT;		// Set the data type in message as temperature
+	sendRadioData(BASE_ADDRESS, sendData, 6, true);
+	memset(lightLevel, 0, sizeof(lightLevel));
+
+	printf("send light things\n"); 
+}
+
+// While loop function for ground water
+void groundWater(uint8_t address, uint16_t sensorData){
+	uint8_t sendData[MAX_DATA_LENGTH];	// Create an array for the data to be send
+
+	uint8_t waterLevel[4];
+
+	floatToUint8Array(WaterLevelConverter(sensorData), waterLevel);
+
+	memcpy(&sendData[2], waterLevel, 4);
+	sendData[0] = address;			// Set first byte as original sender address
+	sendData[1] = DATA_GROUND_HUMID;		// Set the data type in message as temperature
+	sendRadioData(BASE_ADDRESS, sendData, 6, true);
+	memset(waterLevel, 0, sizeof(waterLevel));
+
+	printf("send ground water things\n"); 
 }
