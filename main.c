@@ -31,7 +31,7 @@ void groundWater(uint8_t address, uint16_t sensorData);
 float WaterLevelConverter(double raw_adc){
 	static float Sensordata;
 	
-	if(raw_adc > 4050) Sensordata = 1000;
+	if(raw_adc > 4050) Sensordata = 100;
 	else Sensordata = (float) (raw_adc/(40.96));
 	
 	return Sensordata;
